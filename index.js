@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const { toNodeHandler } = require("better-auth/node");
 const connectDB = require("./lib/db");
 
 // Routes
@@ -10,6 +11,7 @@ const bookingRoutes = require("./routes/booking.routes");
 const userRoutes    = require("./routes/user.routes");
 const adminRoutes   = require("./routes/admin.routes");
 const paymentRoutes = require("./routes/payment.routes");
+const stripeWebhook = require("./routes/stripeWebhook");
 
 const app = express();
 
@@ -23,27 +25,26 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
+// ── BetterAuth — handles Google OAuth routes ──────────────────
+// Mounted at /api/auth/better/* via toNodeHandler. This MUST come before
+// express.json() because BetterAuth reads the raw request body itself.
+const auth = require("./lib/auth");
+app.all("/api/auth/better/*splat", toNodeHandler(auth));
+
+// ── Stripe webhook ────────────────────────────────────────────
+// MUST come before express.json() and use the raw body parser so the
+// Stripe signature can be verified against the unparsed payload.
+app.post(
+  "/api/payments/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook
+);
+
+// JSON body parsing for our own routes (after the BetterAuth handler)
 app.use(express.json());
 
 // ── Connect MongoDB ───────────────────────────────────────────
 connectDB();
-
-// ── BetterAuth — handles Google OAuth routes ──────────────────
-// Mounts at /api/auth/better/* so it doesn't clash with our routes
-const auth = require("./lib/auth");
-app.all("/api/auth/better/{*splat}", (req, res) => {
-  // 1. Determine the host protocol (http or https) dynamically
-  const protocol = req.protocol; 
-  const host = req.get("host"); // returns "localhost:5000"
-
-  // 2. Rewrite path so BetterAuth sees it without the /better prefix
-  const rewrittenPath = req.url.replace("/api/auth/better", "/api/auth");
-
-  // 3. Fix: Re-construct a complete, absolute URL so BetterAuth's internal `new URL()` doesn't crash
-  req.url = `${protocol}://${host}${rewrittenPath}`;
-
-  return auth.handler(req, res);
-});
 
 // ── Health check ──────────────────────────────────────────────
 app.get("/", (req, res) => {

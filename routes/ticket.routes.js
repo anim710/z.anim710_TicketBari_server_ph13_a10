@@ -2,7 +2,19 @@ const express = require("express");
 const router = express.Router();
 const connectDB = require("../lib/db");
 const verifyJWT = require("../middleware/verifyJWT");
+const { verifyVendor } = require("../middleware/verifyRole");
 const { ObjectId } = require("mongodb");
+
+// Fields a vendor must never be able to set/change via create or update.
+const IMMUTABLE_TICKET_FIELDS = [
+  "verificationStatus",
+  "vendorEmail",
+  "vendorName",
+  "isAdvertised",
+  "isHidden",
+  "createdAt",
+  "_id",
+];
 
 // GET all approved tickets (public) with search, filter, sort, pagination
 router.get("/", async (req, res) => {
@@ -66,13 +78,21 @@ router.get("/:id", async (req, res) => {
 });
 
 // POST add ticket (vendor only)
-router.post("/", verifyJWT, async (req, res) => {
-  if (req.user.role !== "vendor")
-    return res.status(403).json({ message: "Vendors only" });
-
+router.post("/", verifyJWT, verifyVendor, async (req, res) => {
   const db = await connectDB();
+
+  // Block fraud-flagged vendors from adding tickets.
+  const vendor = await db.collection("users").findOne({ email: req.user.email });
+  if (vendor?.isFraud)
+    return res.status(403).json({ message: "Account suspended" });
+
+  const body = { ...req.body };
+  IMMUTABLE_TICKET_FIELDS.forEach((f) => delete body[f]);
+
   const ticket = {
-    ...req.body,
+    ...body,
+    vendorEmail: req.user.email,
+    vendorName: req.user.name,
     verificationStatus: "pending",
     isAdvertised: false,
     isHidden: false,
@@ -82,21 +102,56 @@ router.post("/", verifyJWT, async (req, res) => {
   res.json(result);
 });
 
-// PATCH update ticket (vendor only)
+// PATCH update ticket (owner vendor or admin)
 router.patch("/:id", verifyJWT, async (req, res) => {
   const db = await connectDB();
+  let ticketId;
+  try {
+    ticketId = new ObjectId(req.params.id);
+  } catch {
+    return res.status(400).json({ message: "Invalid ticket id" });
+  }
+
+  const ticket = await db.collection("tickets").findOne({ _id: ticketId });
+  if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+  const isOwner = ticket.vendorEmail === req.user.email;
+  if (req.user.role !== "admin" && !isOwner)
+    return res.status(403).json({ message: "Not allowed" });
+
+  if (ticket.verificationStatus === "rejected" && req.user.role !== "admin")
+    return res.status(400).json({ message: "Rejected tickets cannot be edited" });
+
+  const body = { ...req.body };
+  IMMUTABLE_TICKET_FIELDS.forEach((f) => delete body[f]);
+
   const result = await db
     .collection("tickets")
-    .updateOne({ _id: new ObjectId(req.params.id) }, { $set: req.body });
+    .updateOne({ _id: ticketId }, { $set: body });
   res.json(result);
 });
 
-// DELETE ticket (vendor only)
+// DELETE ticket (owner vendor or admin)
 router.delete("/:id", verifyJWT, async (req, res) => {
   const db = await connectDB();
-  const result = await db
-    .collection("tickets")
-    .deleteOne({ _id: new ObjectId(req.params.id) });
+  let ticketId;
+  try {
+    ticketId = new ObjectId(req.params.id);
+  } catch {
+    return res.status(400).json({ message: "Invalid ticket id" });
+  }
+
+  const ticket = await db.collection("tickets").findOne({ _id: ticketId });
+  if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+  const isOwner = ticket.vendorEmail === req.user.email;
+  if (req.user.role !== "admin" && !isOwner)
+    return res.status(403).json({ message: "Not allowed" });
+
+  if (ticket.verificationStatus === "rejected" && req.user.role !== "admin")
+    return res.status(400).json({ message: "Rejected tickets cannot be deleted" });
+
+  const result = await db.collection("tickets").deleteOne({ _id: ticketId });
   res.json(result);
 });
 

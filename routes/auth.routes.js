@@ -144,22 +144,26 @@ router.post("/google-save", async (req, res) => {
 
     const db = await connectDB();
 
-    // Check if user already exists
-    let user = await db.collection("users").findOne({ email });
+    // BetterAuth shares the same `users` collection, so the row may already
+    // exist (created during the OAuth callback) without our app-specific fields.
+    const existing = await db.collection("users").findOne({ email });
 
-    if (!user) {
-      // First time Google login — create user
-      const newUser = {
-        name: name || "Google User",
-        email,
-        image: image || "",
-        role: "user",
-        provider: "google",
-        createdAt: new Date(),
-      };
-      await db.collection("users").insertOne(newUser);
-      user = newUser;
-    }
+    const set = {
+      name: name || existing?.name || "Google User",
+      image: image || existing?.image || "",
+    };
+    // Don't overwrite an email-provider account; only tag brand-new Google users.
+    if (!existing?.provider) set.provider = "google";
+    // Backfill role if BetterAuth created the row without one.
+    if (existing && !existing.role) set.role = "user";
+
+    await db.collection("users").updateOne(
+      { email },
+      { $set: set, $setOnInsert: { role: "user", createdAt: new Date() } },
+      { upsert: true }
+    );
+
+    const user = await db.collection("users").findOne({ email });
 
     // Check fraud
     if (user.isFraud) {

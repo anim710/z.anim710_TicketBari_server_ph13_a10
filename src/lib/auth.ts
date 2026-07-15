@@ -1,12 +1,13 @@
-const { betterAuth } = require("better-auth");
-const { mongodbAdapter } = require("better-auth/adapters/mongodb");
-const { MongoClient } = require("mongodb");
+import { betterAuth } from "better-auth";
+import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { MongoClient } from "mongodb";
+import { env } from "../config/env.js";
 
 // Separate client just for BetterAuth
-const client = new MongoClient(process.env.MONGODB_URI);
+const client = new MongoClient(env.MONGODB_URI);
 
-const auth = betterAuth({
-  database: mongodbAdapter(client.db(process.env.DB_NAME)),
+export const auth = betterAuth({
+  database: mongodbAdapter(client.db(env.DB_NAME)),
 
   // Reuse our existing `users` collection instead of letting BetterAuth
   // create a separate `user` collection (avoids duplicate user records).
@@ -14,7 +15,6 @@ const auth = betterAuth({
     modelName: "users",
   },
 
-  // We do NOT enable emailAndPassword here
   // Email/password is handled by our own custom routes with JWT
   emailAndPassword: {
     enabled: false,
@@ -22,21 +22,19 @@ const auth = betterAuth({
 
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
     },
   },
 
-  secret: process.env.BETTER_AUTH_SECRET,
+  secret: env.BETTER_AUTH_SECRET,
   // baseURL must be the SERVER's own URL so the Google redirect_uri points back here.
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:5000",
+  baseURL: env.BETTER_AUTH_URL,
   // basePath matches the server mount and the client authClient basePath,
   // so the generated redirect_uri is /api/auth/better/callback/google.
   basePath: "/api/auth/better",
 
-  trustedOrigins: [
-    process.env.CLIENT_URL || "http://localhost:3000",
-  ],
+  trustedOrigins: [env.CLIENT_URL],
 });
 
-module.exports = auth;
+export default auth;

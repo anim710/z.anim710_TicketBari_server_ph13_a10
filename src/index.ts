@@ -15,6 +15,8 @@ import paymentRoutes from "./routes/payment.routes.js";
 import stripeWebhook from "./routes/stripeWebhook.js";
 
 const app = express();
+
+// Render (and other reverse proxies) terminate TLS and set X-Forwarded-*.
 app.set("trust proxy", 1);
 
 app.use(
@@ -39,7 +41,16 @@ app.post(
 app.use(express.json());
 
 app.get("/", (_req, res) => {
-  res.json({ status: "TicketBari server running ✅", time: new Date() });
+  res.json({
+    status: "TicketBari server running ✅",
+    time: new Date(),
+    // Deploy fingerprint — confirm this appears on Render after redeploy
+    auth: {
+      skipStateCookieCheck: true,
+      betterAuthUrl: env.BETTER_AUTH_URL,
+      clientUrl: env.CLIENT_URL,
+    },
+  });
 });
 
 app.use("/api/auth", authRoutes);

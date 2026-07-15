@@ -9,7 +9,7 @@ const client = new MongoClient(env.MONGODB_URI);
 const isHttps = env.BETTER_AUTH_URL.startsWith("https://");
 
 export const auth = betterAuth({
-  database: mongodbAdapter(client.db(env.DB_NAME)),
+  database: mongodbAdapter(client.db(env.DB_NAME), { client }),
 
   // Reuse our existing `users` collection instead of letting BetterAuth
   // create a separate `user` collection (avoids duplicate user records).
@@ -33,16 +33,22 @@ export const auth = betterAuth({
   // DB verification of the OAuth `state` param still provides CSRF protection.
   account: {
     skipStateCookieCheck: true,
+    storeStateStrategy: "database",
   },
 
   secret: env.BETTER_AUTH_SECRET,
-  // baseURL must be the SERVER's own URL so the Google redirect_uri points back here.
+  // Prefer the public frontend origin (with Next rewrite) so Google redirect_uri
+  // and cookies stay same-site. Fallback remains the API URL if unset.
   baseURL: env.BETTER_AUTH_URL,
   // basePath matches the server mount and the client authClient basePath,
   // so the generated redirect_uri is /api/auth/better/callback/google.
   basePath: "/api/auth/better",
 
   trustedOrigins: [env.CLIENT_URL],
+
+  onAPIError: {
+    errorURL: `${env.CLIENT_URL}/login`,
+  },
 
   advanced: {
     // Production: session cookies must be sent on credentialed requests from Vercel.

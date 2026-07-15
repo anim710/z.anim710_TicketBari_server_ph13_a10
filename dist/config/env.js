@@ -9,7 +9,9 @@ const envSchema = z.object({
     GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),
     GOOGLE_CLIENT_SECRET: z.string().min(1, "GOOGLE_CLIENT_SECRET is required"),
     BETTER_AUTH_SECRET: z.string().min(1, "BETTER_AUTH_SECRET is required"),
-    BETTER_AUTH_URL: z.string().url().default("http://localhost:5000"),
+    // Public URL used for Google redirect_uri. Prefer the frontend origin when
+    // Next.js proxies /api/auth/better/* to this API (same-site cookies).
+    BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
     STRIPE_SECRET_KEY: z.string().min(1, "STRIPE_SECRET_KEY is required"),
     STRIPE_WEBHOOK_SECRET: z.string().min(1, "STRIPE_WEBHOOK_SECRET is required"),
 });

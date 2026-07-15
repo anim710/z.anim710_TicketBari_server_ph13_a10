@@ -12,9 +12,25 @@ export declare const auth: import("better-auth").Auth<{
             clientSecret: string;
         };
     };
+    account: {
+        skipStateCookieCheck: true;
+        storeStateStrategy: "database";
+    };
     secret: string;
     baseURL: string;
     basePath: string;
     trustedOrigins: string[];
+    onAPIError: {
+        errorURL: string;
+    };
+    advanced: {
+        ipAddress: {
+            ipAddressHeaders: string[];
+        };
+        defaultCookieAttributes?: {
+            sameSite: "none";
+            secure: true;
+        } | undefined;
+    };
 }>;
 export default auth;
